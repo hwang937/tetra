@@ -1,0 +1,1817 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>모던 테트리스 - 길게 누르기 부드러운 이동 지원</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Teko:wght@600;700&family=Pretendard:wght@400;700;900&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { 
+    background: #090A0F; 
+    color: #ECECF1; 
+    font-family: 'Pretendard', sans-serif; 
+    display: flex; 
+    justify-content: center; 
+    align-items: center; 
+    min-height: 100vh; 
+    overflow-x: hidden;
+  }
+
+  /* === TETR.IO 스타일 메뉴 화면 === */
+  .mode-select-screen {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    width: 90%;
+    max-width: 620px;
+    z-index: 100;
+    padding: 20px;
+  }
+  .mode-select-screen.hidden { display: none; }
+
+  .banner-card {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 110px;
+    border-radius: 6px;
+    padding: 0 24px;
+    cursor: pointer;
+    overflow: hidden;
+    transition: all 0.2s cubic-bezier(0.1, 0.9, 0.2, 1);
+    box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+    border: 1px solid rgba(255,255,255,0.05);
+    user-select: none;
+  }
+  .banner-card:hover {
+    transform: scale(1.02) translateX(4px);
+    filter: brightness(1.15);
+    box-shadow: 0 12px 32px rgba(0,0,0,0.7);
+  }
+  .banner-card:active { transform: scale(0.99); }
+
+  .banner-icon {
+    font-family: 'Teko', sans-serif;
+    font-size: 80px;
+    font-weight: 700;
+    line-height: 1;
+    margin-right: 28px;
+    letter-spacing: -2px;
+    text-shadow: 4px 4px 0px rgba(0,0,0,0.4);
+    min-width: 100px;
+    text-align: center;
+  }
+
+  .banner-text { display: flex; flex-direction: column; }
+  .banner-title {
+    font-family: 'Teko', sans-serif;
+    font-size: 46px;
+    font-weight: 700;
+    line-height: 0.9;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+  }
+  .banner-sub {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    opacity: 0.75;
+    margin-top: 4px;
+    text-transform: uppercase;
+  }
+
+  .banner-mp {
+    background: linear-gradient(90deg, #2D1B28 0%, #1A121D 100%);
+    border-left: 6px solid #FF5D8F;
+  }
+  .banner-mp .banner-icon { color: #FF5D8F; }
+  .banner-mp .banner-title { color: #FF85A8; }
+  .banner-mp .banner-sub { color: #E8A2B7; }
+
+  .banner-solo {
+    background: linear-gradient(90deg, #1B1B2D 0%, #12121D 100%);
+    border-left: 6px solid #845EC2;
+  }
+  .banner-solo .banner-icon { color: #845EC2; }
+  .banner-solo .banner-title { color: #A179E0; }
+  .banner-solo .banner-sub { color: #B29BD6; }
+
+  .banner-channel {
+    background: linear-gradient(90deg, #12281D 0%, #0D1A14 100%);
+    border-left: 6px solid #00C9A7;
+  }
+  .banner-channel .banner-icon { color: #00C9A7; }
+  .banner-channel .banner-title { color: #43E0C5; }
+  .banner-channel .banner-sub { color: #82D1C4; }
+
+  /* === 전체 게임 프레임 === */
+  .main-container {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 20px;
+    background: #161722;
+    padding: 24px;
+    border-radius: 12px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.8);
+    border: 1px solid #3B3E5B;
+    position: relative;
+    max-width: 100%;
+  }
+  .main-container.active { display: flex; }
+
+  .game-inner-layout {
+    display: flex;
+    gap: 30px;
+  }
+
+  .player-wrapper.shake { animation: shakeAnim 0.15s ease-in-out; }
+  @keyframes shakeAnim {
+    0% { transform: translate(0, 0); }
+    25% { transform: translate(-4px, 3px); }
+    50% { transform: translate(4px, -3px); }
+    75% { transform: translate(-2px, -2px); }
+    100% { transform: translate(0, 0); }
+  }
+
+  .player-wrapper { display: flex; gap: 16px; position: relative; }
+  .canvas-area { position: relative; }
+  
+  canvas.board {
+    background: #0D0E15;
+    border-radius: 8px;
+    border: 2px solid #4E9FFF;
+    box-shadow: 0 0 20px rgba(78, 159, 255, 0.25);
+    display: block;
+  }
+  .p2-board {
+    border-color: #FF5D8F !important;
+    box-shadow: 0 0 20px rgba(255, 93, 143, 0.25) !important;
+  }
+
+  /* 카운트다운 & 대기 오버레이 */
+  .countdown-overlay {
+    position: absolute;
+    top: 0; left: 0;
+    width: 240px; height: 400px;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    background: rgba(13, 14, 21, 0.94);
+    border-radius: 8px;
+    z-index: 20;
+    transition: opacity 0.3s ease;
+  }
+  .countdown-overlay.hidden { display: none; }
+
+  .countdown-text {
+    font-size: 54px;
+    font-weight: 900;
+    color: #FFFFFF;
+    text-shadow: 0 0 15px #4E9FFF, 0 0 30px #4E9FFF;
+    position: absolute;
+  }
+
+  .result-banner {
+    font-size: 28px;
+    font-weight: 900;
+    text-align: center;
+    position: absolute;
+    top: 35%;
+    width: 100%;
+    z-index: 30;
+  }
+  .result-banner.win { color: #FFC75F; text-shadow: 0 0 20px #FFC75F; }
+  .result-banner.lose { color: #FF5D8F; text-shadow: 0 0 20px #FF5D8F; }
+
+  .controls-guide-card {
+    background: rgba(22, 23, 34, 0.95);
+    border: 1px solid #4E9FFF;
+    border-radius: 10px;
+    padding: 12px;
+    width: 210px;
+    text-align: center;
+  }
+  .controls-guide-card.p2-card { border-color: #FF5D8F; }
+  .controls-guide-card h3 { font-size: 13px; color: #4E9FFF; margin-bottom: 8px; }
+  .controls-guide-card.p2-card h3 { color: #FF5D8F; }
+  .controls-guide-card ul { list-style: none; font-size: 11px; color: #ECECF1; display: flex; flex-direction: column; gap: 5px; text-align: left; }
+  .controls-guide-card li { display: flex; justify-content: space-between; align-items: center; }
+  .controls-guide-card key { background: #24273B; border: 1px solid #3B3E5B; border-radius: 4px; padding: 2px 5px; font-size: 10px; color: #FFC75F; font-weight: bold; }
+
+  .panel { display: flex; flex-direction: column; gap: 8px; width: 120px; }
+  .box { background: #0D0E15; padding: 6px 8px; border-radius: 8px; text-align: center; border: 1px solid #3B3E5B; }
+  .title { color: #8E90A6; font-size: 10px; font-weight: 700; margin-bottom: 2px; }
+  .score-val { font-size: 15px; font-weight: bold; color: #4E9FFF; }
+  .combo-val { font-size: 14px; font-weight: bold; color: #FF5D8F; }
+  .speed-val { font-size: 13px; font-weight: bold; color: #FFC75F; }
+
+  .combo-popup {
+    position: absolute; left: 50%; top: 45%;
+    transform: translate(-50%, -50%) scale(0.2);
+    font-size: 24px; font-weight: 900; color: #FFFFFF;
+    text-shadow: 0 0 10px #FFFFFF, 0 0 20px #FF5D8F;
+    pointer-events: none; opacity: 0; z-index: 10; white-space: nowrap;
+    transition: transform 0.25s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.25s ease;
+  }
+  .combo-popup.show { opacity: 1; transform: translate(-50%, -80%) scale(1.2); }
+
+  .home-btn {
+    background: #24273B; border: 1px solid #4E9FFF; color: #4E9FFF;
+    padding: 6px 14px; border-radius: 6px; font-weight: bold; font-size: 12px; cursor: pointer;
+    align-self: flex-start;
+  }
+  .home-btn:hover { background: #4E9FFF; color: #0D0E15; }
+
+  .start-btn {
+    width: 100%; padding: 12px 0;
+    background: linear-gradient(135deg, #00C9A7, #4E9FFF);
+    color: #0D0E15; border: none; border-radius: 8px;
+    font-size: 14px; font-weight: 900; cursor: pointer;
+    box-shadow: 0 4px 15px rgba(0, 201, 167, 0.4);
+    transition: all 0.2s ease; z-index: 50;
+  }
+  .start-btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+
+  /* === 모바일 가상 조작 패드 === */
+  .mobile-controls {
+    display: none;
+    flex-direction: column;
+    gap: 8px;
+    width: 100%;
+    max-width: 380px;
+    margin-top: 5px;
+    user-select: none;
+  }
+  .m-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+  }
+  .m-btn {
+    flex: 1;
+    background: #202336;
+    border: 1px solid #4E9FFF;
+    color: #4E9FFF;
+    font-size: 18px;
+    font-weight: 900;
+    padding: 14px 0;
+    border-radius: 8px;
+    cursor: pointer;
+    text-align: center;
+    touch-action: none;
+    user-select: none;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  }
+  .m-btn:active {
+    background: #4E9FFF;
+    color: #0D0E15;
+    transform: scale(0.96);
+  }
+  .m-btn.action-hold { border-color: #A179E0; color: #A179E0; }
+  .m-btn.action-hold:active { background: #A179E0; color: #0D0E15; }
+  .m-btn.action-drop { border-color: #FFC75F; color: #FFC75F; }
+  .m-btn.action-drop:active { background: #FFC75F; color: #0D0E15; }
+
+  @media (max-width: 850px) {
+    body { align-items: flex-start; padding: 10px; overflow-y: auto; }
+    .main-container { padding: 12px; gap: 10px; width: 100%; }
+    .game-inner-layout { flex-direction: column; align-items: center; gap: 10px; }
+    .mobile-controls { display: flex; }
+    .banner-card { height: 90px; padding: 0 16px; }
+    .banner-icon { font-size: 60px; min-width: 80px; margin-right: 16px; }
+    .banner-title { font-size: 34px; }
+  }
+</style>
+<meta name="theme-color" content="#090A0F">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="TETRA">
+</head>
+<body>
+
+<!-- === 1. 메뉴 화면 === -->
+<div class="mode-select-screen" id="modeSelectScreen">
+  <div class="banner-card banner-mp" onclick="selectMode('battle')">
+    <div class="banner-icon">MP</div>
+    <div class="banner-text">
+      <div class="banner-title">MULTIPLAYER</div>
+      <div class="banner-sub">1대1 대전 (P1: WASD / P2: 방향키)</div>
+    </div>
+  </div>
+
+  <div class="banner-card banner-solo" onclick="selectMode('single')">
+    <div class="banner-icon">1P</div>
+    <div class="banner-text">
+      <div class="banner-title">SOLO</div>
+      <div class="banner-sub">싱글 플레이 (모바일 터치 패드 지원)</div>
+    </div>
+  </div>
+
+  <div class="banner-card banner-channel" onclick="alert('플레이할 모드(MULTIPLAYER 또는 SOLO)를 클릭하세요!')">
+    <div class="banner-icon">4n</div>
+    <div class="banner-text">
+      <div class="banner-title">TETRA CHANNEL</div>
+      <div class="banner-sub">조작법 확인 후 START 버튼으로 시작</div>
+    </div>
+  </div>
+</div>
+
+<!-- === 2. 메인 게임 플레이 영역 === -->
+<div class="main-container" id="mainContainer">
+  <button class="home-btn" onclick="goHome()">← 메뉴로 이동</button>
+
+  <div class="game-inner-layout">
+    <!-- P1 영역 -->
+    <div class="player-wrapper" id="p1Wrapper">
+      <div class="canvas-area">
+        <canvas id="board1" class="board" width="240" height="400"></canvas>
+        <div id="comboPopup1" class="combo-popup">COMBO x2!</div>
+        <div id="resultBanner1" class="result-banner"></div>
+        
+        <div id="overlay1" class="countdown-overlay">
+          <div id="countdownText1" class="countdown-text" style="display:none;"></div>
+          <div id="guideCard1" class="controls-guide-card">
+            <h3>🎮 P1 / 싱글 조작법</h3>
+            <ul>
+              <li><span>이동</span> <key>WASD</key> / <key>방향키</key></li>
+              <li><span>회전</span> <key>W</key> / <key>↑</key></li>
+              <li><span>소프트 드롭</span> <key>S</key> / <key>↓</key></li>
+              <li><span>하드 드롭</span> <key>Space</key> / <key>Enter</key></li>
+              <li><span>홀드</span> <key>Shift</key> / <key>Ctrl</key></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="box"><div class="title">HOLD</div><canvas id="hold1" width="60" height="40"></canvas></div>
+        <div class="box"><div class="title">NEXT</div><canvas id="next1" width="60" height="40"></canvas></div>
+        <div class="box"><div class="title">SCORE</div><div id="score1" class="score-val">0</div></div>
+        <div class="box"><div class="title">COMBO</div><div id="combo1" class="combo-val">0</div></div>
+        <div class="box"><div class="title">SPEED</div><div id="speed1" class="speed-val">Lv. 1</div></div>
+        <button class="start-btn" onclick="triggerStart()">🚀 START</button>
+      </div>
+    </div>
+
+    <!-- P2 영역 -->
+    <div class="player-wrapper" id="p2Wrapper" style="display: none;">
+      <div class="canvas-area">
+        <canvas id="board2" class="board p2-board" width="240" height="400"></canvas>
+        <div id="comboPopup2" class="combo-popup">COMBO x2!</div>
+        <div id="resultBanner2" class="result-banner"></div>
+        
+        <div id="overlay2" class="countdown-overlay">
+          <div id="countdownText2" class="countdown-text" style="display:none;"></div>
+          <div id="guideCard2" class="controls-guide-card p2-card">
+            <h3>🎮 P2 조작법</h3>
+            <ul>
+              <li><span>좌 / 우 이동</span> <key>←</key> <key>→</key></li>
+              <li><span>회전 (위)</span> <key>↑</key></li>
+              <li><span>소프트 드롭</span> <key>↓</key></li>
+              <li><span>하드 드롭</span> <key>Enter</key></li>
+              <li><span>블록 홀드</span> <key>Ctrl</key></li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="box"><div class="title">HOLD</div><canvas id="hold2" width="60" height="40"></canvas></div>
+        <div class="box"><div class="title">NEXT</div><canvas id="next2" width="60" height="40"></canvas></div>
+        <div class="box"><div class="title">SCORE</div><div id="score2" class="score-val" style="color:#FF5D8F;">0</div></div>
+        <div class="box"><div class="title">COMBO</div><div id="combo2" class="combo-val" style="color:#FFC75F;">0</div></div>
+        <div class="box"><div class="title">SPEED</div><div id="speed2" class="speed-val">Lv. 1</div></div>
+        <button class="start-btn" onclick="triggerStart()" style="background: linear-gradient(135deg, #FF5D8F, #FF9671);">🚀 START</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- === 모바일 화면 하단 터치 조작 패드 (포인터 이벤트 연동) === -->
+  <div class="mobile-controls" id="mobileControls">
+    <div class="m-row">
+      <button class="m-btn action-hold" onpointerdown="handleTouch('hold', event)">HOLD</button>
+      <button class="m-btn" onpointerdown="handleTouch('rotate', event)">🔄 회전</button>
+      <button class="m-btn action-drop" onpointerdown="handleTouch('drop', event)">🚀 낙하</button>
+    </div>
+    <div class="m-row">
+      <button class="m-btn" onpointerdown="handleTouch('left', event, true)" onpointerup="handleTouchRelease('left')" onpointerleave="handleTouchRelease('left')">◀ 좌</button>
+      <button class="m-btn" onpointerdown="handleTouch('down', event, true)" onpointerup="handleTouchRelease('down')" onpointerleave="handleTouchRelease('down')">▼ 소프트</button>
+      <button class="m-btn" onpointerdown="handleTouch('right', event, true)" onpointerup="handleTouchRelease('right')" onpointerleave="handleTouchRelease('right')">우 ▶</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const ROW = 20, COL = 12, SQ = 20;
+const PIECES = [
+  [[[1,1,0],[0,1,1]], "#FF5D73"],
+  [[[0,1,1],[1,1,0]], "#00C9A7"],
+  [[[0,1,0],[1,1,1]], "#845EC2"],
+  [[[1,1],[1,1]], "#FFC75F"],
+  [[[0,0,1],[1,1,1]], "#FF9671"],
+  [[[1,1,1,1]], "#4D80E4"],
+  [[[1,0,0],[1,1,1]], "#008E9B"]
+];
+
+let currentGameMode = 'single';
+let isGameRunning = false;
+let isCountingDown = false;
+let activeKeys = new Set();
+let animFrameId = null;
+
+class Particle {
+  constructor(x, y, color = "#FFFFFF", isLarge = false) {
+    this.x = x; this.y = y;
+    let angle = Math.random() * Math.PI * 2;
+    let speed = isLarge ? (Math.random() * 5 + 2) : (Math.random() * 3 + 1);
+    this.vx = Math.cos(angle) * speed;
+    this.vy = Math.sin(angle) * speed - 0.5;
+    this.alpha = 1;
+    this.size = isLarge ? (Math.random() * 3 + 1.5) : (Math.random() * 2 + 1);
+    this.color = color;
+    this.decay = Math.random() * 0.05 + 0.03;
+  }
+  update() {
+    this.x += this.vx; this.y += this.vy;
+    this.vx *= 0.92; this.vy *= 0.92;
+    this.alpha -= this.decay;
+  }
+  draw(c) {
+    if (this.alpha <= 0) return;
+    c.save();
+    c.globalAlpha = Math.max(0, this.alpha);
+    c.fillStyle = this.color;
+    c.beginPath();
+    c.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    c.fill();
+    c.restore();
+  }
+}
+
+class DropBeam {
+  constructor(x, startY, endY, width, color) {
+    this.x = x; this.startY = startY; this.endY = endY;
+    this.width = width; this.color = color; this.alpha = 0.6;
+  }
+  update() { this.alpha -= 0.1; }
+  draw(c) {
+    if (this.alpha <= 0) return;
+    c.save();
+    c.globalAlpha = this.alpha;
+    let grad = c.createLinearGradient(this.x, this.startY, this.x, this.endY);
+    grad.addColorStop(0, "rgba(255, 255, 255, 0)");
+    grad.addColorStop(1, this.color);
+    c.fillStyle = grad;
+    c.fillRect(this.x, this.startY, this.width, Math.max(0, this.endY - this.startY));
+    c.restore();
+  }
+}
+
+class PlayerEngine {
+  constructor(id) {
+    this.id = id;
+    this.cvs = document.getElementById(`board${id}`);
+    this.ctx = this.cvs.getContext("2d");
+    this.hCtx = document.getElementById(`hold${id}`).getContext("2d");
+    this.nCtx = document.getElementById(`next${id}`).getContext("2d");
+    this.wrapper = document.getElementById(`p${id}Wrapper`);
+    this.comboPopup = document.getElementById(`comboPopup${id}`);
+    this.resultBanner = document.getElementById(`resultBanner${id}`);
+    this.overlay = document.getElementById(`overlay${id}`);
+    this.countdownText = document.getElementById(`countdownText${id}`);
+    this.guideCard = document.getElementById(`guideCard${id}`);
+    
+    this.board = [];
+    this.piece = null;
+    this.nextPiece = null;
+    this.holdPiece = null;
+    this.canHold = true;
+    this.score = 0;
+    this.combo = 0;
+    this.speedLevel = 1;
+    this.currentInterval = 500;
+    this.lastDropTime = 0;
+    this.isDead = false;
+
+    this.particles = [];
+    this.dropBeams = [];
+    this.lineFlashes = [];
+    this.speedTimer = null;
+
+    this.inputState = {
+      left: { pressed: false, time: 0, repeatTime: 0 },
+      right: { pressed: false, time: 0, repeatTime: 0 },
+      down: { pressed: false, time: 0, repeatTime: 0 }
+    };
+  }
+
+  reset() {
+    this.board = Array.from({length: ROW}, () => Array(COL).fill("#0D0E15"));
+    this.score = 0;
+    this.combo = 0;
+    this.speedLevel = 1;
+    this.currentInterval = 500;
+    this.isDead = false;
+    this.particles = [];
+    this.dropBeams = [];
+    this.lineFlashes = [];
+    this.holdPiece = null;
+    this.canHold = true;
+    
+    document.getElementById(`score${this.id}`).innerText = 0;
+    document.getElementById(`combo${this.id}`).innerText = 0;
+    document.getElementById(`speed${this.id}`).innerText = "Lv. 1";
+    this.resultBanner.innerText = "";
+    this.resultBanner.className = "result-banner";
+
+    this.nextPiece = this.randomPiece();
+    this.drawMini(this.nextPiece, this.nCtx);
+    this.drawMini(null, this.hCtx);
+  }
+
+  randomPiece() {
+    const i = Math.floor(Math.random() * PIECES.length);
+    return { p: PIECES[i][0], color: PIECES[i][1], x: 4, y: 0 };
+  }
+
+  drawSquare(x, y, color, isGhost = false) {
+    if (color === "#0D0E15") {
+      this.ctx.fillStyle = "#0D0E15";
+      this.ctx.fillRect(x * SQ, y * SQ, SQ, SQ);
+      this.ctx.strokeStyle = "#24273B";
+      this.ctx.lineWidth = 1;
+      this.ctx.strokeRect(x * SQ, y * SQ, SQ, SQ);
+      return;
+    }
+
+    if (isGhost) {
+      this.ctx.strokeStyle = color;
+      this.ctx.lineWidth = 1.5;
+      this.ctx.setLineDash([3, 3]);
+      this.ctx.strokeRect(x * SQ + 2, y * SQ + 2, SQ - 4, SQ - 4);
+      this.ctx.setLineDash([]);
+    } else {
+      this.ctx.fillStyle = color;
+      this.ctx.fillRect(x * SQ + 1, y * SQ + 1, SQ - 2, SQ - 2);
+      this.ctx.strokeStyle = "rgba(0, 0, 0, 0.25)";
+      this.ctx.lineWidth = 1;
+      this.ctx.strokeRect(x * SQ + 1, y * SQ + 1, SQ - 2, SQ - 2);
+    }
+  }
+
+  getGhostY() {
+    let ghostY = this.piece.y;
+    while (!this.collision(0, ghostY - this.piece.y + 1, this.piece.p)) {
+      ghostY++;
+    }
+    return ghostY;
+  }
+
+  drawBoard() {
+    this.ctx.clearRect(0, 0, this.cvs.width, this.cvs.height);
+
+    for (let r = 0; r < ROW; r++) {
+      for (let c = 0; c < COL; c++) {
+        this.drawSquare(c, r, this.board[r][c]);
+      }
+    }
+
+    if (this.piece && !this.isDead && isGameRunning) {
+      let ghostY = this.getGhostY();
+      this.piece.p.forEach((row, r) => row.forEach((v, c) => {
+        if (v) this.drawSquare(this.piece.x + c, ghostY + r, this.piece.color, true);
+      }));
+
+      this.piece.p.forEach((row, r) => row.forEach((v, c) => {
+        if (v) this.drawSquare(this.piece.x + c, this.piece.y + r, this.piece.color);
+      }));
+    }
+
+    for (let i = this.dropBeams.length - 1; i >= 0; i--) {
+      let beam = this.dropBeams[i];
+      beam.update(); beam.draw(this.ctx);
+      if (beam.alpha <= 0) this.dropBeams.splice(i, 1);
+    }
+
+    for (let i = this.lineFlashes.length - 1; i >= 0; i--) {
+      let flash = this.lineFlashes[i];
+      this.ctx.save();
+      this.ctx.fillStyle = `rgba(255, 255, 255, ${flash.alpha})`;
+      this.ctx.fillRect(0, flash.y * SQ, this.cvs.width, SQ);
+      this.ctx.restore();
+      flash.alpha -= 0.15;
+      if (flash.alpha <= 0) this.lineFlashes.splice(i, 1);
+    }
+
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      let p = this.particles[i];
+      p.update(); p.draw(this.ctx);
+      if (p.alpha <= 0) this.particles.splice(i, 1);
+    }
+  }
+
+  drawMini(p, c) {
+    c.clearRect(0, 0, 60, 40);
+    if (!p) return;
+    p.p.forEach((row, r) => row.forEach((v, col) => {
+      if (v) {
+        c.fillStyle = p.color;
+        c.fillRect(col * 9 + 10, r * 9 + 6, 8, 8);
+      }
+    }));
+  }
+
+  collision(x, y, p) {
+    for (let r = 0; r < p.length; r++) {
+      for (let c = 0; c < p[r].length; c++) {
+        if (!p[r][c]) continue;
+        let nx = this.piece.x + c + x;
+        let ny = this.piece.y + r + y;
+        if (nx < 0 || nx >= COL || ny >= ROW) return true;
+        if (ny >= 0 && this.board[ny][nx] !== "#0D0E15") return true;
+      }
+    }
+    return false;
+  }
+
+  moveLeft() {
+    if (this.isDead || !isGameRunning || !this.piece) return;
+    if (!this.collision(-1, 0, this.piece.p)) {
+      this.piece.x--;
+    }
+  }
+
+  moveRight() {
+    if (this.isDead || !isGameRunning || !this.piece) return;
+    if (!this.collision(1, 0, this.piece.p)) {
+      this.piece.x++;
+    }
+  }
+
+  moveDown() {
+    if (this.isDead || !isGameRunning || !this.piece) return;
+    if (!this.collision(0, 1, this.piece.p)) {
+      this.piece.y++;
+    } else {
+      this.lock();
+      this.newPiece();
+    }
+  }
+
+  newPiece() {
+    this.piece = this.nextPiece;
+    this.nextPiece = this.randomPiece();
+    this.canHold = true;
+    this.drawMini(this.nextPiece, this.nCtx);
+    this.drawMini(this.holdPiece, this.hCtx);
+
+    if (this.collision(0, 0, this.piece.p)) {
+      this.triggerShake();
+      this.isDead = true;
+      checkGameEnd();
+    }
+  }
+
+  hardDrop() {
+    if (this.isDead || !isGameRunning || !this.piece) return;
+    let startY = this.piece.y * SQ;
+    while (!this.collision(0, 1, this.piece.p)) {
+      this.piece.y++;
+    }
+    let endY = (this.piece.y + this.piece.p.length) * SQ;
+    let pWidth = this.piece.p[0].length * SQ;
+    let startX = this.piece.x * SQ;
+
+    this.dropBeams.push(new DropBeam(startX, startY, endY, pWidth, this.piece.color));
+    for (let i = 0; i < 6; i++) {
+      this.particles.push(new Particle(startX + Math.random() * pWidth, endY, "#FFFFFF", false));
+    }
+
+    this.lock();
+    this.newPiece();
+  }
+
+  rotatePiece() {
+    if (this.isDead || !isGameRunning || !this.piece) return;
+    let rotated = this.piece.p[0].map((_, i) => this.piece.p.map(row => row[i]).reverse());
+    
+    if (!this.collision(0, 0, rotated)) {
+      this.piece.p = rotated;
+      return;
+    }
+
+    const kickOffsets = [[-1, 0], [1, 0], [0, -1], [-2, 0], [2, 0], [-1, -1], [1, -1], [0, -2]];
+    for (let [dx, dy] of kickOffsets) {
+      if (!this.collision(dx, dy, rotated)) {
+        this.piece.x += dx;
+        this.piece.y += dy;
+        this.piece.p = rotated;
+        return;
+      }
+    }
+  }
+
+  holdBlock() {
+    if (this.isDead || !isGameRunning || !this.piece || !this.canHold) return;
+    this.canHold = false;
+    if (!this.holdPiece) {
+      this.holdPiece = this.piece;
+      this.newPiece();
+    } else {
+      let temp = this.holdPiece;
+      this.holdPiece = this.piece;
+      this.piece = temp;
+      this.piece.x = 4;
+      this.piece.y = 0;
+    }
+    this.drawMini(this.holdPiece, this.hCtx);
+  }
+
+  lock() {
+    this.piece.p.forEach((row, r) => row.forEach((v, c) => {
+      if (v && (this.piece.y + r) >= 0) {
+        this.board[this.piece.y + r][this.piece.x + c] = this.piece.color;
+      }
+    }));
+
+    let roundScore = 20;
+    let linesCleared = 0;
+
+    for (let r = ROW - 1; r >= 0; r--) {
+      if (this.board[r].every(color => color !== "#0D0E15")) {
+        this.lineFlashes.push({ y: r, alpha: 1.0 });
+        for (let c = 0; c < COL; c++) {
+          this.particles.push(new Particle(c * SQ + SQ / 2, r * SQ + SQ / 2, this.board[r][c], true));
+        }
+        this.board.splice(r, 1);
+        this.board.unshift(Array(COL).fill("#0D0E15"));
+        linesCleared++;
+        r++;
+      }
+    }
+
+    if (linesCleared > 0) {
+      this.combo++;
+      let baseScore = [0, 200, 500, 900, 1500][linesCleared] || 200;
+      let comboBonus = (this.combo - 1) * 150;
+      roundScore += baseScore + comboBonus;
+
+      document.getElementById(`combo${this.id}`).innerText = this.combo;
+      this.triggerShake();
+
+      if (linesCleared === 4) {
+        this.triggerComboUI(this.combo, true);
+      } else if (this.combo >= 2) {
+        this.triggerComboUI(this.combo, false);
+      }
+
+      if (currentGameMode === 'battle') {
+        let sendGarbage = linesCleared - 1;
+        if (this.combo >= 2) sendGarbage += 1;
+        if (sendGarbage > 0) {
+          let opponentId = this.id === 1 ? 2 : 1;
+          players[opponentId].addGarbageLines(sendGarbage);
+        }
+      }
+    } else {
+      this.combo = 0;
+      document.getElementById(`combo${this.id}`).innerText = 0;
+    }
+
+    this.score += roundScore;
+    document.getElementById(`score${this.id}`).innerText = this.score;
+  }
+
+  addGarbageLines(count) {
+    if (this.isDead) return;
+    for (let i = 0; i < count; i++) {
+      let holeIndex = Math.floor(Math.random() * COL);
+      let garbageRow = Array(COL).fill("#3B3E5B");
+      garbageRow[holeIndex] = "#0D0E15";
+      this.board.shift();
+      this.board.push(garbageRow);
+    }
+    this.triggerShake();
+  }
+
+  triggerShake() {
+    this.wrapper.classList.remove("shake");
+    void this.wrapper.offsetWidth;
+    this.wrapper.classList.add("shake");
+  }
+
+  triggerComboUI(comboVal, isTetris = false) {
+    this.comboPopup.innerText = isTetris ? "TETRIS!" : `COMBO x${comboVal}!`;
+    this.comboPopup.classList.add("show");
+    setTimeout(() => this.comboPopup.classList.remove("show"), 400);
+
+    for (let i = 0; i < 12; i++) {
+      this.particles.push(new Particle(this.cvs.width / 2, this.cvs.height / 2, "#FFFFFF", true));
+    }
+  }
+
+  startSpeedAcceleration() {
+    if (this.speedTimer) clearInterval(this.speedTimer);
+    this.speedTimer = setInterval(() => {
+      if (this.isDead || !isGameRunning) return;
+      if (this.currentInterval > 50) {
+        this.currentInterval = Math.max(50, Math.floor(this.currentInterval * 0.90));
+        this.speedLevel++;
+        document.getElementById(`speed${this.id}`).innerText = `Lv. ${this.speedLevel}`;
+      }
+    }, 10000);
+  }
+}
+
+const players = {
+  1: new PlayerEngine(1),
+  2: new PlayerEngine(2)
+};
+
+function selectMode(mode) {
+  currentGameMode = mode;
+  document.getElementById("modeSelectScreen").classList.add("hidden");
+  document.getElementById("mainContainer").classList.add("active");
+
+  if (mode === 'single') {
+    document.getElementById("p2Wrapper").style.display = "none";
+    document.getElementById("mobileControls").style.display = "flex";
+  } else {
+    document.getElementById("p2Wrapper").style.display = "flex";
+    document.getElementById("mobileControls").style.display = window.innerWidth <= 850 ? "flex" : "none";
+  }
+
+  isGameRunning = false;
+  isCountingDown = false;
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+
+  Object.values(players).forEach(p => {
+    p.reset();
+    p.drawBoard();
+    p.overlay.classList.remove("hidden");
+    p.guideCard.style.display = "block";
+    p.countdownText.style.display = "none";
+    p.resultBanner.innerText = "";
+  });
+}
+
+function goHome() {
+  isGameRunning = false;
+  isCountingDown = false;
+  if (animFrameId) cancelAnimationFrame(animFrameId);
+  
+  document.getElementById("mainContainer").classList.remove("active");
+  document.getElementById("modeSelectScreen").classList.remove("hidden");
+}
+
+function triggerStart() {
+  if (isCountingDown || isGameRunning) return;
+  isCountingDown = true;
+
+  Object.values(players).forEach(p => {
+    p.reset();
+    p.overlay.classList.remove("hidden");
+    p.guideCard.style.display = "none";
+    p.countdownText.style.display = "block";
+  });
+
+  let count = 3;
+  function runCount() {
+    if (count > 0) {
+      Object.values(players).forEach(p => {
+        p.countdownText.innerText = count;
+        p.countdownText.classList.remove("show");
+        void p.countdownText.offsetWidth;
+        p.countdownText.classList.add("show");
+      });
+      count--;
+      setTimeout(runCount, 800);
+    } else {
+      Object.values(players).forEach(p => {
+        p.countdownText.innerText = "GO!";
+        p.countdownText.classList.remove("show");
+        void p.countdownText.offsetWidth;
+        p.countdownText.classList.add("show");
+      });
+
+      setTimeout(() => {
+        Object.values(players).forEach(p => {
+          p.countdownText.classList.remove("show");
+          p.overlay.classList.add("hidden");
+          p.newPiece();
+          p.lastDropTime = performance.now();
+          p.startSpeedAcceleration();
+        });
+
+        isCountingDown = false;
+        isGameRunning = true;
+        requestRender();
+      }, 500);
+    }
+  }
+
+  runCount();
+}
+
+function checkGameEnd() {
+  if (currentGameMode === 'single') {
+    if (players[1].isDead) {
+      isGameRunning = false;
+      players[1].resultBanner.innerText = "GAME OVER";
+      players[1].resultBanner.className = "result-banner lose";
+      players[1].overlay.classList.remove("hidden");
+      players[1].guideCard.style.display = "none";
+    }
+  } else {
+    if (players[1].isDead || players[2].isDead) {
+      isGameRunning = false;
+      
+      if (players[1].isDead && players[2].isDead) {
+        players[1].resultBanner.innerText = "DRAW";
+        players[2].resultBanner.innerText = "DRAW";
+      } else if (players[1].isDead) {
+        players[1].resultBanner.innerText = "GAME OVER";
+        players[1].resultBanner.className = "result-banner lose";
+        players[2].resultBanner.innerText = "🏆 VICTORY!";
+        players[2].resultBanner.className = "result-banner win";
+      } else {
+        players[2].resultBanner.innerText = "GAME OVER";
+        players[2].resultBanner.className = "result-banner lose";
+        players[1].resultBanner.innerText = "🏆 VICTORY!";
+        players[1].resultBanner.className = "result-banner win";
+      }
+
+      players[1].overlay.classList.remove("hidden");
+      players[2].overlay.classList.remove("hidden");
+      players[1].guideCard.style.display = "none";
+      players[2].guideCard.style.display = "none";
+    }
+  }
+}
+
+// 모바일 터치 패드 입력 핸들러 (길게 누를 때 연속 이동 지원)
+function handleTouch(action, e, isContinuous = false) {
+  if (e) e.preventDefault();
+  if (!isGameRunning) return;
+
+  const p = players[1];
+  const now = performance.now();
+
+  switch(action) {
+    case 'left':
+      p.moveLeft();
+      if (isContinuous) p.inputState.left = { pressed: true, time: now, repeatTime: now };
+      break;
+    case 'right':
+      p.moveRight();
+      if (isContinuous) p.inputState.right = { pressed: true, time: now, repeatTime: now };
+      break;
+    case 'down':
+      p.moveDown();
+      if (isContinuous) p.inputState.down = { pressed: true, time: now, repeatTime: now };
+      break;
+    case 'rotate': p.rotatePiece(); break;
+    case 'hold': p.holdBlock(); break;
+    case 'drop': p.hardDrop(); break;
+  }
+}
+
+function handleTouchRelease(action) {
+  const p = players[1];
+  if (action === 'left') p.inputState.left.pressed = false;
+  if (action === 'right') p.inputState.right.pressed = false;
+  if (action === 'down') p.inputState.down.pressed = false;
+}
+
+// PC 키보드 이벤트 리스너
+window.addEventListener("keydown", e => {
+  const code = e.code;
+  
+  if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight", "Enter", "ControlLeft", "ControlRight"].includes(code)) {
+    e.preventDefault();
+  }
+
+  if (!activeKeys.has(code)) {
+    activeKeys.add(code);
+    const now = performance.now();
+
+    if (isGameRunning) {
+      if (code === "KeyA" || (currentGameMode === 'single' && code === "ArrowLeft")) {
+        players[1].moveLeft();
+        players[1].inputState.left = { pressed: true, time: now, repeatTime: now };
+      }
+      if (code === "KeyD" || (currentGameMode === 'single' && code === "ArrowRight")) {
+        players[1].moveRight();
+        players[1].inputState.right = { pressed: true, time: now, repeatTime: now };
+      }
+      if (code === "KeyW" || (currentGameMode === 'single' && code === "ArrowUp")) {
+        players[1].rotatePiece();
+      }
+      if (code === "KeyS" || (currentGameMode === 'single' && code === "ArrowDown")) {
+        players[1].moveDown();
+        players[1].inputState.down = { pressed: true, time: now, repeatTime: now };
+      }
+      if (code === "Space" || (currentGameMode === 'single' && code === "Enter")) {
+        players[1].hardDrop();
+      }
+      if (code === "ShiftLeft" || code === "ShiftRight" || (currentGameMode === 'single' && (code === "ControlLeft" || code === "ControlRight"))) {
+        players[1].holdBlock();
+      }
+
+      if (currentGameMode === 'battle') {
+        if (code === "ArrowLeft") {
+          players[2].moveLeft();
+          players[2].inputState.left = { pressed: true, time: now, repeatTime: now };
+        }
+        if (code === "ArrowRight") {
+          players[2].moveRight();
+          players[2].inputState.right = { pressed: true, time: now, repeatTime: now };
+        }
+        if (code === "ArrowUp") players[2].rotatePiece();
+        if (code === "ArrowDown") {
+          players[2].moveDown();
+          players[2].inputState.down = { pressed: true, time: now, repeatTime: now };
+        }
+        if (code === "Enter") players[2].hardDrop();
+        if (code === "ControlLeft" || code === "ControlRight") players[2].holdBlock();
+      }
+    }
+  }
+});
+
+window.addEventListener("keyup", e => {
+  const code = e.code;
+  activeKeys.delete(code);
+
+  if (code === "KeyA" || code === "ArrowLeft") players[1].inputState.left.pressed = false;
+  if (code === "KeyD" || code === "ArrowRight") players[1].inputState.right.pressed = false;
+  if (code === "KeyS" || code === "ArrowDown") players[1].inputState.down.pressed = false;
+
+  if (currentGameMode === 'battle') {
+    if (code === "ArrowLeft") players[2].inputState.left.pressed = false;
+    if (code === "ArrowRight") players[2].inputState.right.pressed = false;
+    if (code === "ArrowDown") players[2].inputState.down.pressed = false;
+  }
+});
+
+// 소프트 드롭 및 좌우 연속 이동(DAS & ARR) 처리 로직
+function handleContinuousInputs(now) {
+  if (!isGameRunning) return;
+
+  Object.values(players).forEach(p => {
+    if (p.isDead) return;
+
+    let leftSt = p.inputState.left;
+    let rightSt = p.inputState.right;
+    let downSt = p.inputState.down;
+
+    if (leftSt.pressed && !rightSt.pressed) {
+      if (now - leftSt.time > 130) { // DAS (초기 딜레이)
+        if (now - leftSt.repeatTime > 35) { // ARR (반복 속도)
+          p.moveLeft();
+          leftSt.repeatTime = now;
+        }
+      }
+    }
+
+    if (rightSt.pressed && !leftSt.pressed) {
+      if (now - rightSt.time > 130) {
+        if (now - rightSt.repeatTime > 35) {
+          p.moveRight();
+          rightSt.repeatTime = now;
+        }
+      }
+    }
+
+    if (downSt.pressed) {
+      if (now - downSt.time > 60) { // 소프트 드롭은 더 빠르게 반응하도록 설정
+        if (now - downSt.repeatTime > 25) {
+          p.moveDown();
+          downSt.repeatTime = now;
+        }
+      }
+    }
+  });
+}
+
+function requestRender() {
+  animFrameId = requestAnimationFrame(gameLoopStep);
+}
+
+function gameLoopStep(timestamp) {
+  if (isGameRunning) {
+    handleContinuousInputs(timestamp);
+
+    Object.values(players).forEach(p => {
+      if (!p.isDead && (timestamp - p.lastDropTime > p.currentInterval)) {
+        p.moveDown();
+        p.lastDropTime = timestamp;
+      }
+    });
+  }
+
+  Object.values(players).forEach(p => {
+    p.drawBoard();
+  });
+
+  if (isGameRunning) {
+    requestRender();
+  }
+}
+</script>
+
+<!-- === 사운드 애드온 === -->
+<script>
+(() => {
+  let ac = null, master = null, bgmBus = null, muted = false;
+  const last = {};
+  const throttle = (k, ms) => {
+    const n = performance.now();
+    if (n - (last[k] || 0) < ms) return false;
+    last[k] = n;
+    return true;
+  };
+
+  function init() {
+    if (!ac) {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      ac = new AC();
+      master = ac.createGain();
+      master.gain.value = muted ? 0 : 0.6;
+      master.connect(ac.destination);
+      bgmBus = ac.createGain();
+      bgmBus.gain.value = 0.5;
+      bgmBus.connect(master);
+    }
+    if (ac.state === 'suspended') ac.resume();
+  }
+
+  function tone(f, d, type = 'square', v = 0.12, slide = null, delay = 0, bus = null) {
+    if (!ac || muted) return;
+    const t = ac.currentTime + Math.max(0, delay);
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(f, t);
+    if (slide) o.frequency.exponentialRampToValueAtTime(slide, t + d);
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v, t + 0.005);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + d);
+    o.connect(g); g.connect(bus || master);
+    o.start(t); o.stop(t + d + 0.05);
+  }
+
+  function noise(d, v = 0.15, cutoff = 1500, delay = 0) {
+    if (!ac || muted) return;
+    const t = ac.currentTime + delay;
+    const len = Math.floor(ac.sampleRate * d);
+    const buf = ac.createBuffer(1, len, ac.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / len);
+    const src = ac.createBufferSource(); src.buffer = buf;
+    const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cutoff;
+    const g = ac.createGain(); g.gain.value = v;
+    src.connect(lp); lp.connect(g); g.connect(master);
+    src.start(t);
+  }
+
+  // ---------- 효과음 ----------
+  const SFX = {
+    move()   { if (throttle('mv', 35)) tone(300, 0.035, 'square', 0.04); },
+    rotate() { tone(520, 0.07, 'square', 0.07, 800); },
+    hold()   { tone(400, 0.08, 'triangle', 0.12, 640); tone(640, 0.08, 'triangle', 0.1, null, 0.07); },
+    lock()   { if (!throttle('lk', 40)) return; tone(140, 0.1, 'sine', 0.25, 60); noise(0.05, 0.08, 800); },
+    hardDrop() { noise(0.12, 0.2, 3000); tone(200, 0.12, 'sawtooth', 0.1, 50); },
+    clear(n, combo) {
+      const notes = [523, 659, 784, 1047, 1319];
+      const big = n >= 4;
+      for (let i = 0; i <= Math.min(n, 4); i++)
+        tone(notes[i], 0.16, big ? 'triangle' : 'square', big ? 0.16 : 0.1, null, i * 0.06);
+      if (big) noise(0.25, 0.12, 6000, 0.1);
+      if (combo >= 2) tone(660 + Math.min(combo, 10) * 70, 0.14, 'triangle', 0.12, null, 0.32);
+    },
+    garbage() { tone(90, 0.25, 'sawtooth', 0.16, 45); noise(0.15, 0.12, 400); },
+    beep()    { tone(440, 0.12, 'square', 0.12); },
+    go()      { if (throttle('go', 300)) tone(880, 0.3, 'square', 0.14); },
+    levelUp() { if (!throttle('lv', 400)) return; [523, 659, 784].forEach((f, i) => tone(f, 0.1, 'square', 0.08, null, i * 0.07)); },
+    gameOver() { [392, 330, 262, 196].forEach((f, i) => tone(f, 0.25, 'sawtooth', 0.12, f * 0.97, i * 0.2)); },
+    win()      { [523, 659, 784, 1047, 784, 1047].forEach((f, i) => tone(f, 0.18, 'triangle', 0.14, null, i * 0.12)); }
+  };
+
+  // ---------- 배경음악 (간단한 절차적 루프) ----------
+  const chords = [[220, 261.6, 329.6], [174.6, 220, 261.6], [261.6, 329.6, 392], [196, 246.9, 293.7]];
+  const arp = [0, 1, 2, 1, 0, 1, 2, 1];
+  const STEP = 0.15;
+  let bgmTimer = null, step = 0, nextT = 0;
+
+  function schedule() {
+    if (!ac) return;
+    while (nextT < ac.currentTime + 0.3) {
+      const chord = chords[Math.floor(step / 8) % chords.length];
+      const d = nextT - ac.currentTime;
+      const i = step % 8;
+      if (i % 4 === 0) tone(chord[0] / 2, STEP * 3.5, 'triangle', 0.22, null, d, bgmBus);
+      tone(chord[arp[i]] * 2, STEP * 0.9, 'square', 0.04, null, d, bgmBus);
+      nextT += STEP; step++;
+    }
+  }
+  const BGM = {
+    start() { init(); if (!ac) return; BGM.stop(); step = 0; nextT = ac.currentTime + 0.05; bgmTimer = setInterval(schedule, 50); },
+    stop() { if (bgmTimer) clearInterval(bgmTimer); bgmTimer = null; }
+  };
+
+  // ---------- 기존 게임 엔진에 훅 연결 ----------
+  const P = PlayerEngine.prototype;
+  const wrap = (name, fn) => { const o = P[name]; P[name] = function (...a) { return fn.call(this, o, a); }; };
+  const live = p => !p.isDead && isGameRunning && p.piece;
+
+  ['moveLeft', 'moveRight'].forEach(n => wrap(n, function (o, a) {
+    const x = this.piece && this.piece.x;
+    const r = o.apply(this, a);
+    if (this.piece && this.piece.x !== x) SFX.move();
+    return r;
+  }));
+  wrap('rotatePiece', function (o, a) {
+    const was = this.piece && this.piece.p;
+    const r = o.apply(this, a);
+    if (this.piece && this.piece.p !== was) SFX.rotate();
+    return r;
+  });
+  wrap('holdBlock', function (o, a) {
+    const ok = live(this) && this.canHold;
+    const r = o.apply(this, a);
+    if (ok) SFX.hold();
+    return r;
+  });
+  wrap('hardDrop', function (o, a) {
+    if (live(this)) SFX.hardDrop();
+    return o.apply(this, a);
+  });
+  wrap('lock', function (o, a) {
+    const before = this.lineFlashes.length;
+    const r = o.apply(this, a);
+    const n = this.lineFlashes.length - before;
+    if (n > 0) SFX.clear(n, this.combo); else SFX.lock();
+    return r;
+  });
+  wrap('addGarbageLines', function (o, a) {
+    if (!this.isDead) SFX.garbage();
+    return o.apply(this, a);
+  });
+  wrap('drawBoard', function (o, a) {
+    const lv = this._lv || 1;
+    if (this.speedLevel > lv && isGameRunning) SFX.levelUp();
+    this._lv = this.speedLevel;
+    return o.apply(this, a);
+  });
+
+  // 전역 함수 훅
+  const _end = window.checkGameEnd;
+  window.checkGameEnd = function () {
+    const was = isGameRunning;
+    const r = _end.apply(this, arguments);
+    if (was && !isGameRunning) {
+      BGM.stop();
+      SFX.gameOver();
+      if (currentGameMode === 'battle' && players[1].isDead !== players[2].isDead)
+        setTimeout(SFX.win, 800);
+    }
+    return r;
+  };
+  const _home = window.goHome;
+  window.goHome = function () { BGM.stop(); return _home.apply(this, arguments); };
+  const _sel = window.selectMode;
+  window.selectMode = function () { init(); BGM.stop(); return _sel.apply(this, arguments); };
+  const _start = window.triggerStart;
+  window.triggerStart = function () { init(); return _start.apply(this, arguments); };
+
+  // 카운트다운 감시: 3,2,1 비프 + GO! 와 함께 BGM 시작
+  const cd = document.getElementById('countdownText1');
+  new MutationObserver(() => {
+    const t = cd.textContent.trim();
+    if (/^\d$/.test(t)) SFX.beep();
+    else if (t === 'GO!') { SFX.go(); BGM.start(); }
+  }).observe(cd, { childList: true, characterData: true, subtree: true });
+
+  // 음소거 버튼
+  const btn = document.createElement('button');
+  btn.className = 'home-btn';
+  btn.style.cssText = 'position:absolute;top:16px;right:16px;';
+  btn.textContent = '🔊 ON';
+  btn.onclick = () => {
+    init();
+    muted = !muted;
+    if (master) master.gain.value = muted ? 0 : 0.6;
+    btn.textContent = muted ? '🔇 OFF' : '🔊 ON';
+    btn.blur();
+  };
+  document.getElementById('mainContainer').appendChild(btn);
+
+  // 브라우저 자동재생 정책 대응: 첫 입력 때 오디오 활성화
+  ['pointerdown', 'keydown'].forEach(ev => window.addEventListener(ev, init, { passive: true }));
+})();
+</script>
+<!-- === 게임 연출 레이어 === -->
+<script>
+(() => {
+  // ---------- 스타일 ----------
+  const st = document.createElement('style');
+  st.textContent = `
+  body { background: radial-gradient(ellipse at 50% 0%, #1b1844 0%, #0b0c18 55%, #06070c 100%); }
+  .main-container { z-index: 1; border-color: #4a4f85; box-shadow: 0 0 0 1px #0008, 0 16px 48px #000c, 0 0 60px rgba(132,94,194,.18); }
+  .game-logo { text-align: center; margin-bottom: 6px; user-select: none; }
+  .logo-main { font-family: 'Teko', sans-serif; font-weight: 700; font-size: 112px; line-height: .9; letter-spacing: 10px;
+    background: linear-gradient(90deg,#FF5D73,#FFC75F,#00C9A7,#4E9FFF,#845EC2,#FF5D73); background-size: 300% 100%;
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+    filter: drop-shadow(0 0 18px rgba(132,94,194,.7)); animation: logoFlow 6s linear infinite; }
+  .logo-sub { font-size: 12px; letter-spacing: 8px; color: #8E90A6; font-weight: 700; margin-top: 4px; }
+  @keyframes logoFlow { to { background-position: 300% 0; } }
+  .banner-card { animation: cardIn .5s backwards; }
+  .banner-card:nth-child(2) { animation-delay: .1s; } .banner-card:nth-child(3) { animation-delay: .2s; } .banner-card:nth-child(4) { animation-delay: .3s; }
+  @keyframes cardIn { from { opacity: 0; transform: translateX(-40px); } }
+  .banner-card::after { content: ''; position: absolute; top: 0; left: -60%; width: 40%; height: 100%;
+    background: linear-gradient(100deg, transparent, rgba(255,255,255,.12), transparent); transform: skewX(-20deg); transition: left .5s; }
+  .banner-card:hover::after { left: 130%; }
+  canvas.board { border-width: 3px; }
+  canvas.board.danger { animation: danger .45s ease-in-out infinite alternate; }
+  @keyframes danger { from { filter: none; } to { filter: drop-shadow(0 0 16px #ff2d2d) saturate(1.3); } }
+  .player-wrapper.flash-big canvas.board { animation: flashBig .55s ease-out; }
+  @keyframes flashBig { 0% { filter: brightness(2.4) saturate(1.8); } 100% { filter: none; } }
+  .score-pop { position: absolute; left: 50%; top: 40%; font-weight: 900; font-size: 22px; color: #FFC75F;
+    text-shadow: 0 0 10px #FFC75F, 2px 2px 0 #000; pointer-events: none; z-index: 15; animation: popUp 1s ease-out forwards; }
+  .score-pop.big { font-size: 34px; color: #fff; text-shadow: 0 0 14px #FF5D8F, 0 0 28px #FFC75F, 2px 2px 0 #000; }
+  @keyframes popUp { 0% { opacity: 0; transform: translate(-50%,10px) scale(.5); } 15% { opacity: 1; transform: translate(-50%,0) scale(1.25); }
+    100% { opacity: 0; transform: translate(-50%,-70px) scale(1); } }
+  .box { background: linear-gradient(180deg,#141626,#0D0E15); border-top: 2px solid #4E9FFF55; }
+  .box .score-val, .box .combo-val, .box .speed-val { text-shadow: 0 0 8px currentColor; font-variant-numeric: tabular-nums; }
+  .start-btn { animation: btnPulse 1.6s ease-in-out infinite; letter-spacing: 2px; }
+  @keyframes btnPulse { 50% { box-shadow: 0 0 22px rgba(0,201,167,.8); } }
+  .countdown-text.show { animation: cdPop .8s ease-out; }
+  @keyframes cdPop { 0% { transform: scale(2.4); opacity: 0; } 25% { opacity: 1; } 100% { transform: scale(1); } }
+  .result-banner { font-size: 34px; letter-spacing: 3px; animation: cdPop .6s ease-out; }
+  @media (max-width: 850px) { .logo-main { font-size: 78px; letter-spacing: 6px; } }
+  `;
+  document.head.appendChild(st);
+
+  // ---------- 메뉴 로고 ----------
+  const menu = document.getElementById('modeSelectScreen');
+  const logo = document.createElement('div');
+  logo.className = 'game-logo';
+  logo.innerHTML = '<div class="logo-main">TETRA</div><div class="logo-sub">MODERN BLOCK BATTLE</div>';
+  menu.insertBefore(logo, menu.firstChild);
+
+  // ---------- 떨어지는 배경 블록 ----------
+  const bg = document.createElement('canvas');
+  bg.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none';
+  document.body.prepend(bg);
+  const bx = bg.getContext('2d');
+  let W = 0, H = 0;
+  const rs = () => { W = bg.width = innerWidth; H = bg.height = innerHeight; };
+  rs(); addEventListener('resize', rs);
+  const mk = init => {
+    const p = PIECES[Math.floor(Math.random() * PIECES.length)];
+    return { m: p[0], c: p[1], x: Math.random() * W, y: init ? Math.random() * H : -80, s: 14 + Math.random() * 16,
+             v: .3 + Math.random() * .7, r: Math.random() * 6.28, w: (Math.random() - .5) * .01, a: .05 + Math.random() * .1 };
+  };
+  const fl = Array.from({ length: 16 }, () => mk(true));
+  (function loop() {
+    bx.clearRect(0, 0, W, H);
+    fl.forEach((f, i) => {
+      f.y += f.v; f.r += f.w;
+      if (f.y > H + 80) fl[i] = mk(false);
+      bx.save(); bx.translate(f.x, f.y); bx.rotate(f.r); bx.globalAlpha = f.a; bx.fillStyle = f.c;
+      f.m.forEach((row, r) => row.forEach((v, c) => {
+        if (v) bx.fillRect(c * f.s - f.m[0].length * f.s / 2, r * f.s - f.m.length * f.s / 2, f.s - 2, f.s - 2);
+      }));
+      bx.restore();
+    });
+    requestAnimationFrame(loop);
+  })();
+
+  // ---------- 입체 블록 렌더링 ----------
+  const shade = (hex, amt) => {
+    const n = parseInt(hex.slice(1), 16);
+    let r = n >> 16, g = (n >> 8) & 255, b = n & 255;
+    const t = amt < 0 ? 0 : 255, p = Math.abs(amt);
+    r = Math.round(r + (t - r) * p); g = Math.round(g + (t - g) * p); b = Math.round(b + (t - b) * p);
+    return `rgb(${r},${g},${b})`;
+  };
+  const P = PlayerEngine.prototype;
+  P.drawSquare = function (x, y, color, ghost = false) {
+    const c = this.ctx, px = x * SQ, py = y * SQ;
+    if (color === "#0D0E15") {
+      c.fillStyle = "#0D0E15"; c.fillRect(px, py, SQ, SQ);
+      c.strokeStyle = "#1b1e2e"; c.lineWidth = 1; c.strokeRect(px + .5, py + .5, SQ - 1, SQ - 1);
+      return;
+    }
+    if (ghost) {
+      c.save(); c.shadowColor = color; c.shadowBlur = 8; c.strokeStyle = color; c.globalAlpha = .75;
+      c.lineWidth = 1.5; c.strokeRect(px + 2.5, py + 2.5, SQ - 5, SQ - 5); c.restore();
+      return;
+    }
+    const g = c.createLinearGradient(px, py, px, py + SQ);
+    g.addColorStop(0, shade(color, .35)); g.addColorStop(.5, color); g.addColorStop(1, shade(color, -.35));
+    c.fillStyle = g; c.fillRect(px + 1, py + 1, SQ - 2, SQ - 2);
+    c.fillStyle = "rgba(255,255,255,.4)"; c.fillRect(px + 2, py + 2, SQ - 4, 3);
+    c.fillStyle = "rgba(255,255,255,.15)"; c.fillRect(px + 2, py + 2, 3, SQ - 4);
+    c.strokeStyle = "rgba(0,0,0,.45)"; c.lineWidth = 1; c.strokeRect(px + 1.5, py + 1.5, SQ - 3, SQ - 3);
+  };
+
+  // ---------- 통계 박스 (LINES / BEST) ----------
+  let best = 0;
+  try { best = parseInt(localStorage.getItem('tetraBest') || '0', 10) || 0; } catch (e) {}
+  [1, 2].forEach(id => {
+    const speed = document.getElementById('speed' + id).parentElement;
+    ['LINES', 'BEST'].forEach(label => {
+      const b = document.createElement('div');
+      b.className = 'box';
+      b.innerHTML = `<div class="title">${label}</div><div id="${label.toLowerCase()}${id}" class="score-val" style="color:${label === 'BEST' ? '#FFC75F' : '#00C9A7'}">${label === 'BEST' ? best : 0}</div>`;
+      speed.parentElement.insertBefore(b, speed);
+    });
+  });
+
+  const wrap = (name, fn) => { const o = P[name]; P[name] = function (...a) { return fn.call(this, o, a); }; };
+  wrap('reset', function (o, a) {
+    this.lines = 0;
+    const r = o.apply(this, a);
+    document.getElementById('lines' + this.id).innerText = 0;
+    return r;
+  });
+  wrap('lock', function (o, a) {
+    const s0 = this.score, f0 = this.lineFlashes.length;
+    const r = o.apply(this, a);
+    const n = this.lineFlashes.length - f0, gain = this.score - s0;
+    if (n > 0) {
+      this.lines = (this.lines || 0) + n;
+      document.getElementById('lines' + this.id).innerText = this.lines;
+      const el = document.createElement('div');
+      el.className = 'score-pop' + (n >= 4 ? ' big' : '');
+      el.textContent = '+' + gain;
+      this.cvs.parentElement.appendChild(el);
+      setTimeout(() => el.remove(), 1000);
+      if (n >= 3) {
+        this.wrapper.classList.remove('flash-big'); void this.wrapper.offsetWidth; this.wrapper.classList.add('flash-big');
+      }
+    }
+    if (this.score > best) {
+      best = this.score;
+      try { localStorage.setItem('tetraBest', best); } catch (e) {}
+      [1, 2].forEach(i => { document.getElementById('best' + i).innerText = best; });
+    }
+    return r;
+  });
+  // 위험 경고: 블록이 위쪽 5줄까지 차오르면 보드가 붉게 깜빡임
+  wrap('drawBoard', function (o, a) {
+    const d = isGameRunning && !this.isDead && this.board.slice(0, 5).some(r => r.some(c => c !== "#0D0E15"));
+    if (d !== this._d) { this._d = d; this.cvs.classList.toggle('danger', d); }
+    return o.apply(this, a);
+  });
+})();
+</script>
+<!-- === 온라인 대전 === -->
+<script>
+(() => {
+  // ===== 온라인 대전 (WebRTC P2P / PeerJS 공용 중계서버로 방 코드 연결) =====
+  const P = PlayerEngine.prototype;
+  const wrap = (name, fn) => { const o = P[name]; P[name] = function (...a) { return fn.call(this, o, a); }; };
+  const PAL = PIECES.map(p => p[1]);
+  const EMPTY = "#0D0E15", GARB = "#3B3E5B";
+  const enc = c => c === EMPTY ? '.' : c === GARB ? 'g' : String(PAL.indexOf(c));
+  const dec = ch => ch === '.' ? EMPTY : ch === 'g' ? GARB : PAL[+ch];
+  const remote = players[2];
+  const $ = id => document.getElementById(id);
+
+  let peer = null, conn = null, isHost = false, online = false, connected = false;
+  let roomCode = '', sendTimer = null, joinTimer = null, hostTries = 0;
+  const baseStart = window.triggerStart;
+  const g2Orig = $('guideCard2').innerHTML;
+
+  // ---------- 스타일 / UI ----------
+  const st = document.createElement('style');
+  st.textContent = `
+  .ol-back{position:fixed;inset:0;background:rgba(5,6,12,.88);display:none;align-items:center;justify-content:center;z-index:300}
+  .ol-back.show{display:flex}
+  .ol-card{width:min(92vw,380px);background:#161722;border:1px solid #4E9FFF;border-radius:14px;padding:22px;text-align:center;box-shadow:0 0 40px rgba(78,159,255,.25)}
+  .ol-card h2{font-family:'Teko',sans-serif;font-size:38px;letter-spacing:3px;color:#43E0C5;line-height:1;margin-bottom:10px}
+  .ol-btn{width:100%;padding:12px;border:none;border-radius:8px;font-weight:900;font-size:14px;cursor:pointer;background:linear-gradient(135deg,#00C9A7,#4E9FFF);color:#0D0E15;margin-top:8px}
+  .ol-btn.sec{background:#24273B;color:#4E9FFF;border:1px solid #4E9FFF}
+  .ol-or{color:#8E90A6;font-size:12px;margin:14px 0 4px}
+  .ol-input{width:100%;padding:12px;border-radius:8px;border:1px solid #3B3E5B;background:#0D0E15;color:#fff;font-size:22px;font-weight:900;letter-spacing:8px;text-align:center;text-transform:uppercase}
+  .ol-code{font-size:46px;font-weight:900;letter-spacing:10px;color:#FFC75F;text-shadow:0 0 14px #FFC75F;margin:6px 0 2px;padding-left:10px}
+  .ol-status{min-height:20px;margin-top:12px;font-size:12px;color:#8E90A6;line-height:1.5}
+  .ol-badge{display:none;position:absolute;top:20px;left:50%;transform:translateX(-50%);background:#0D0E15;border:1px solid #FFC75F;color:#FFC75F;border-radius:20px;padding:4px 14px;font-size:12px;font-weight:900;letter-spacing:2px;white-space:nowrap}
+  .ol-toast{position:fixed;top:18px;left:50%;transform:translateX(-50%);background:#161722;border:1px solid #FFC75F;color:#FFC75F;padding:10px 18px;border-radius:10px;font-weight:800;font-size:13px;z-index:400;animation:cdPop .3s ease-out}
+  `;
+  document.head.appendChild(st);
+
+  const lobby = document.createElement('div');
+  lobby.className = 'ol-back';
+  lobby.innerHTML = `
+    <div class="ol-card">
+      <h2>ONLINE BATTLE</h2>
+      <div id="olMenu">
+        <button class="ol-btn" id="olCreate">🏠 방 만들기</button>
+        <div class="ol-or">또는 친구의 방 코드 입력</div>
+        <input class="ol-input" id="olCode" maxlength="5" placeholder="XXXXX" autocomplete="off">
+        <button class="ol-btn sec" id="olJoin">🚪 참가하기</button>
+      </div>
+      <div id="olWait" style="display:none">
+        <div style="color:#8E90A6;font-size:12px">친구에게 이 코드를 알려주세요</div>
+        <div class="ol-code" id="olShow">-----</div>
+        <button class="ol-btn sec" id="olCopy">📋 코드 복사</button>
+      </div>
+      <div class="ol-status" id="olStatus"></div>
+      <button class="ol-btn sec" id="olClose" style="margin-top:14px">닫기</button>
+    </div>`;
+  document.body.appendChild(lobby);
+
+  const badge = document.createElement('div');
+  badge.className = 'ol-badge';
+  $('mainContainer').appendChild(badge);
+
+  const status = t => { $('olStatus').textContent = t; };
+  const toast = t => {
+    const el = document.createElement('div');
+    el.className = 'ol-toast'; el.textContent = t;
+    document.body.appendChild(el);
+    setTimeout(() => el.remove(), 2200);
+  };
+
+  // 메뉴 카드 변경: TETRA CHANNEL(안내용) → ONLINE
+  const card = document.querySelector('.banner-channel');
+  card.querySelector('.banner-icon').textContent = 'ON';
+  card.querySelector('.banner-title').textContent = 'ONLINE';
+  card.querySelector('.banner-sub').textContent = '방 코드로 친구와 온라인 대전';
+  card.onclick = () => openLobby();
+  document.querySelector('.banner-mp .banner-sub').textContent = '같은 PC에서 2명 대전 (P1: WASD / P2: 방향키)';
+
+  function setOnlineUI(on) {
+    remote.remote = on;
+    $('guideCard2').innerHTML = on ? '<h3>🌐 상대 화면</h3><ul><li>상대방의 플레이가 실시간으로 보여요</li></ul>' : g2Orig;
+    document.querySelector('#p2Wrapper .start-btn').style.display = on ? 'none' : '';
+    document.querySelector('#p1Wrapper .start-btn').textContent = '🚀 START';
+    badge.style.display = on ? 'block' : 'none';
+  }
+
+  // ---------- 로비 ----------
+  function openLobby() {
+    lobby.classList.add('show');
+    $('olMenu').style.display = 'block'; $('olWait').style.display = 'none';
+    status(''); $('olCode').value = '';
+  }
+  function closeLobby() { lobby.classList.remove('show'); }
+  $('olClose').onclick = () => { leaveRoom(); closeLobby(); };
+  $('olCreate').onclick = () => createRoom();
+  $('olJoin').onclick = () => joinRoom();
+  $('olCode').addEventListener('keydown', e => { if (e.key === 'Enter') joinRoom(); e.stopPropagation(); });
+  $('olCode').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, ''); });
+  $('olCopy').onclick = async () => {
+    try { await navigator.clipboard.writeText(roomCode); $('olCopy').textContent = '✅ 복사됨!'; }
+    catch (e) { $('olCopy').textContent = '직접 복사해 주세요'; }
+    setTimeout(() => { $('olCopy').textContent = '📋 코드 복사'; }, 1500);
+  };
+
+  function loadPeer() {
+    return new Promise((res, rej) => {
+      if (window.Peer) return res();
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js';
+      s.onload = () => (window.Peer ? res() : rej());
+      s.onerror = rej;
+      document.head.appendChild(s);
+    });
+  }
+  const genCode = () => {
+    const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    return Array.from({ length: 5 }, () => A[Math.floor(Math.random() * A.length)]).join('');
+  };
+
+  async function createRoom() {
+    status('서버에 연결 중...');
+    try { await loadPeer(); } catch (e) { return status('연결 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'); }
+    leaveRoom(); isHost = true; hostTries = 0; openHost();
+  }
+  function openHost() {
+    roomCode = genCode();
+    peer = new Peer('tetra-mp-' + roomCode);
+    peer.on('open', () => {
+      $('olMenu').style.display = 'none'; $('olWait').style.display = 'block';
+      $('olShow').textContent = roomCode;
+      status('친구가 참가하기를 기다리는 중...');
+    });
+    peer.on('connection', c => {
+      if (conn) { c.on('open', () => c.close()); return; }
+      setupConn(c);
+    });
+    peer.on('error', onPeerErr);
+  }
+
+  async function joinRoom() {
+    const code = $('olCode').value.trim().toUpperCase();
+    if (code.length < 5) return status('5자리 방 코드를 입력해 주세요.');
+    status('연결 중...');
+    try { await loadPeer(); } catch (e) { return status('연결 도구를 불러오지 못했어요. 인터넷 연결을 확인해 주세요.'); }
+    leaveRoom(); isHost = false; roomCode = code;
+    peer = new Peer();
+    peer.on('open', () => {
+      setupConn(peer.connect('tetra-mp-' + code, { reliable: true }));
+      joinTimer = setTimeout(() => {
+        if (!connected) { status('연결 시간이 초과됐어요. 코드를 확인하거나 다시 시도해 주세요.'); leaveRoom(); }
+      }, 12000);
+    });
+    peer.on('error', onPeerErr);
+  }
+
+  function onPeerErr(err) {
+    if (err.type === 'unavailable-id' && isHost && ++hostTries < 5) { peer.destroy(); return openHost(); }
+    if (err.type === 'peer-unavailable') { status('방을 찾을 수 없어요. 코드를 다시 확인해 주세요.'); return leaveRoom(); }
+    if (['network', 'server-error', 'socket-error', 'socket-closed'].includes(err.type)) { status('중계 서버에 연결할 수 없어요. 잠시 후 다시 시도해 주세요.'); return; }
+    status('오류가 발생했어요 (' + err.type + ')');
+  }
+
+  function leaveRoom() {
+    clearInterval(sendTimer); clearTimeout(joinTimer);
+    try { if (conn) conn.close(); } catch (e) {}
+    try { if (peer) peer.destroy(); } catch (e) {}
+    conn = null; peer = null; connected = false; online = false;
+    setOnlineUI(false);
+  }
+
+  // ---------- 연결 ----------
+  function setupConn(c) {
+    conn = c; connected = false;
+    let opened = false;
+    const open = () => { if (opened) return; opened = true; connected = true; clearTimeout(joinTimer); startOnline(); };
+    if (c.open) open(); else c.on('open', open);
+    c.on('data', onData);
+    c.on('close', () => onClose(c));
+    c.on('error', () => onClose(c));
+  }
+
+  function startOnline() {
+    closeLobby();
+    selectMode('online');
+    badge.textContent = `ROOM ${roomCode} · ${isHost ? '방장' : '게스트'}`;
+    document.querySelector('#p1Wrapper .start-btn').textContent = isHost ? '🚀 START' : '⏳ 방장 대기';
+    clearInterval(sendTimer);
+    sendTimer = setInterval(() => { if (conn && conn.open && isGameRunning) conn.send(snapshot()); }, 80);
+    toast(isHost ? '친구가 입장했어요! START를 눌러 시작하세요' : '입장 완료! 방장이 시작하길 기다려요');
+  }
+
+  function onClose(c) {
+    if (c !== conn) return;
+    conn = null; connected = false;
+    if (!online) return;
+    toast('상대방이 나갔어요');
+    if (isGameRunning) { remote.isDead = true; checkGameEnd(); }
+    if (!isHost) setTimeout(() => window.goHome(), 1500);
+  }
+
+  // ---------- 데이터 송수신 ----------
+  function snapshot() {
+    const p = players[1];
+    return {
+      t: 's',
+      b: p.board.map(r => r.map(enc).join('')).join(''),
+      pc: p.piece && !p.isDead ? { p: p.piece.p, c: PAL.indexOf(p.piece.color), x: p.piece.x, y: p.piece.y } : null,
+      n: p.nextPiece ? PAL.indexOf(p.nextPiece.color) : -1,
+      h: p.holdPiece ? PAL.indexOf(p.holdPiece.color) : -1,
+      sc: p.score, cb: p.combo, lv: p.speedLevel, ln: p.lines || 0, d: p.isDead
+    };
+  }
+
+  function applySnap(m) {
+    if (typeof m.b !== 'string' || m.b.length !== ROW * COL) return;
+    remote.board = Array.from({ length: ROW }, (_, r) => Array.from({ length: COL }, (_, c) => dec(m.b[r * COL + c]) || EMPTY));
+    remote.piece = m.pc ? { p: m.pc.p, color: PAL[m.pc.c], x: m.pc.x, y: m.pc.y } : null;
+    remote.drawMini(m.n >= 0 ? { p: PIECES[m.n][0], color: PAL[m.n] } : null, remote.nCtx);
+    remote.drawMini(m.h >= 0 ? { p: PIECES[m.h][0], color: PAL[m.h] } : null, remote.hCtx);
+    remote.score = m.sc; remote.combo = m.cb; remote.speedLevel = m.lv;
+    $('score2').innerText = m.sc; $('combo2').innerText = m.cb;
+    $('speed2').innerText = 'Lv. ' + m.lv; $('lines2').innerText = m.ln;
+    if (m.d && !remote.isDead) { remote.isDead = true; checkGameEnd(); }
+  }
+
+  function onData(m) {
+    if (!m || !online) return;
+    if (m.t === 's') applySnap(m);
+    else if (m.t === 'g') { if (isGameRunning && !players[1].isDead) players[1].addGarbageLines(m.n); }
+    else if (m.t === 'start') beginRound(m.seed);
+  }
+
+  // ---------- 공정한 블록 순서(같은 시드) ----------
+  const mulberry = s => () => {
+    s |= 0; s = (s + 0x6D2B79F5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+  function beginRound(seed) {
+    players[1].rng = mulberry(seed);
+    remote.isDead = false;
+    baseStart();
+  }
+  wrap('randomPiece', function (o, a) {
+    if (online && this.rng) {
+      const i = Math.floor(this.rng() * PIECES.length);
+      return { p: PIECES[i][0], color: PIECES[i][1], x: 4, y: 0 };
+    }
+    return o.apply(this, a);
+  });
+
+  // 상대 화면 엔진은 직접 움직이지 않게 막기
+  ['moveLeft', 'moveRight', 'moveDown', 'rotatePiece', 'hardDrop', 'holdBlock', 'newPiece', 'startSpeedAcceleration']
+    .forEach(n => wrap(n, function (o, a) { if (this.remote) return; return o.apply(this, a); }));
+
+  // 줄 지우면 상대에게 방해 줄 전송 (로컬 대전과 같은 규칙)
+  wrap('lock', function (o, a) {
+    if (this.remote) return;
+    const f0 = this.lineFlashes.length;
+    const r = o.apply(this, a);
+    if (online && this === players[1] && conn && conn.open) {
+      const n = this.lineFlashes.length - f0;
+      if (n > 0) {
+        let g = n - 1;
+        if (this.combo >= 2) g += 1;
+        if (g > 0) conn.send({ t: 'g', n: g });
+      }
+    }
+    return r;
+  });
+
+  // ---------- 전역 함수 훅 ----------
+  window.triggerStart = function () {
+    if (!online) return baseStart.apply(this, arguments);
+    if (!isHost) return toast('방장이 START를 누르면 시작돼요');
+    if (!conn || !conn.open) return toast('상대방을 기다리는 중이에요');
+    if (isGameRunning || isCountingDown) return;
+    const seed = (Math.random() * 2147483647) | 0;
+    conn.send({ t: 'start', seed });
+    beginRound(seed);
+  };
+  const _sel = window.selectMode;
+  window.selectMode = function (mode) {
+    online = mode === 'online';
+    setOnlineUI(online);
+    if (!online) players[1].rng = null;
+    return _sel.apply(this, arguments);
+  };
+  const _home = window.goHome;
+  window.goHome = function () { leaveRoom(); return _home.apply(this, arguments); };
+  const _end = window.checkGameEnd;
+  window.checkGameEnd = function () {
+    const r = _end.apply(this, arguments);
+    if (online && players[1].isDead && conn && conn.open) conn.send(snapshot());  // 내 패배를 즉시 전달
+    return r;
+  };
+
+  // 온라인 모드에서도 방향키/Enter/Ctrl 로 조작 (WASD·Space·Shift 는 기본 코드가 처리)
+  const held = new Set();
+  window.addEventListener('keydown', e => {
+    if (!online || !isGameRunning || e.repeat || held.has(e.code)) return;
+    const p = players[1], now = performance.now(), c = e.code;
+    const hit = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Enter', 'ControlLeft', 'ControlRight'].includes(c);
+    if (!hit) return;
+    held.add(c);
+    if (c === 'ArrowLeft')  { p.moveLeft();  p.inputState.left  = { pressed: true, time: now, repeatTime: now }; }
+    if (c === 'ArrowRight') { p.moveRight(); p.inputState.right = { pressed: true, time: now, repeatTime: now }; }
+    if (c === 'ArrowUp') p.rotatePiece();
+    if (c === 'ArrowDown')  { p.moveDown();  p.inputState.down  = { pressed: true, time: now, repeatTime: now }; }
+    if (c === 'Enter') p.hardDrop();
+    if (c === 'ControlLeft' || c === 'ControlRight') p.holdBlock();
+  });
+  window.addEventListener('keyup', e => held.delete(e.code));
+})();
+</script>
+<!-- === PWA: 서비스 워커 등록 + 설치 버튼 === -->
+<script>
+(() => {
+  if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
+  let deferred = null;
+  const btn = document.createElement('button');
+  btn.textContent = '📲 앱 설치';
+  btn.style.cssText = 'display:none;position:fixed;right:14px;bottom:14px;z-index:999;background:linear-gradient(135deg,#00C9A7,#4E9FFF);color:#0D0E15;border:none;border-radius:24px;padding:10px 18px;font-weight:900;font-size:13px;cursor:pointer;box-shadow:0 4px 18px rgba(0,201,167,.5)';
+  document.body.appendChild(btn);
+  window.addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; btn.style.display = 'block'; });
+  btn.onclick = async () => { if (!deferred) return; deferred.prompt(); await deferred.userChoice; deferred = null; btn.style.display = 'none'; };
+  window.addEventListener('appinstalled', () => { btn.style.display = 'none'; });
+  // iOS 사파리는 설치 버튼 이벤트가 없어서 안내 문구 표시
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone;
+  if (ios) {
+    const tip = document.createElement('div');
+    tip.textContent = '📲 공유 버튼 → "홈 화면에 추가"로 설치하세요';
+    tip.style.cssText = 'position:fixed;left:50%;bottom:12px;transform:translateX(-50%);z-index:999;background:#161722;border:1px solid #4E9FFF;color:#ECECF1;padding:8px 14px;border-radius:10px;font-size:12px;font-weight:700;white-space:nowrap';
+    document.body.appendChild(tip);
+    setTimeout(() => tip.remove(), 8000);
+  }
+})();
+</script>
+</body>
+</html>
